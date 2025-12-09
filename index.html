@@ -605,30 +605,332 @@
     </div>
     
     <!-- Firebase Configuration -->
-    <script>
-        // Konfigurasi Firebase (ganti dengan konfigurasi project Anda)
-    // Konfigurasi Firebase
-    const firebaseConfig = {
-        apiKey: "AIzaSyCfqZD7UZZt-GWmtNhfJyksrv3-8ENRjto",
-        authDomain: "insan-cemerlang-d5574.firebaseapp.com",
-        projectId: "insan-cemerlang-d5574",
-        storageBucket: "insan-cemerlang-d5574.firebasestorage.app",
-        messagingSenderId: "1035937160050",
-        appId: "1:1035937160050:web:6d77d3874c3f78b2811beb",
-        measurementId: "G-EVVQ80Q08C"
-    };
+<!-- Tambahkan kode ini di bagian bawah sebelum </body> -->
+<script type="module">
+  import {
+    ambilDaftarInventory,
+    tambahInventory,
+    updateInventory,
+    hapusInventory,
+    ambilInventoryById,
+    ambilInventoryByKategori,
+    hitungStatistik,
+    formatAngka
+  } from './main.js';
 
-    // Inisialisasi Firebase
-    firebase.initializeApp(firebaseConfig);
+  // Variabel global
+  let inventoryData = [];
+  let isEditing = false;
+  let currentEditId = null;
+
+  // Elemen DOM
+  const itemForm = document.getElementById('itemForm');
+  const itemName = document.getElementById('itemName');
+  const itemCategory = document.getElementById('itemCategory');
+  const itemQuantity = document.getElementById('itemQuantity');
+  const itemUnit = document.getElementById('itemUnit');
+  const itemMinStock = document.getElementById('itemMinStock');
+  const itemLocation = document.getElementById('itemLocation');
+  const itemId = document.getElementById('itemId');
+  const cancelEditBtn = document.getElementById('cancelEdit');
+  const inventoryTableBody = document.getElementById('inventoryTableBody');
+  const filterButtons = document.querySelectorAll('.filter-btn');
+  const notification = document.getElementById('notification');
+  const notificationText = document.getElementById('notification-text');
+
+  // Statistik
+  const totalItemsEl = document.getElementById('total-items');
+  const lowStockEl = document.getElementById('low-stock');
+  const categoriesCountEl = document.getElementById('categories-count');
+  const summaryFoodEl = document.getElementById('summary-food');
+  const summaryDrinkEl = document.getElementById('summary-drink');
+  const summaryKitchenEl = document.getElementById('summary-kitchen');
+  const summaryLowEl = document.getElementById('summary-low');
+  const summaryTotalEl = document.getElementById('summary-total');
+
+  // Fungsi untuk menampilkan notifikasi
+  function showNotification(message, type = 'success') {
+    notificationText.textContent = message;
+    notification.className = `notification ${type} show`;
     
-    // Inisialisasi Firestore
-    const db = firebase.firestore();
+    // Hapus class notifikasi sebelumnya
+    notification.classList.remove('notification-success', 'notification-error', 'notification-warning');
     
-    // Ekspor variabel db untuk digunakan di main.js
-    window.db = db;
+    // Tambah class sesuai tipe
+    if (type === 'success') {
+      notification.classList.add('notification-success');
+    } else if (type === 'error') {
+      notification.classList.add('notification-error');
+    } else if (type === 'warning') {
+      notification.classList.add('notification-warning');
+    }
+    
+    notification.classList.add('show');
+    
+    // Sembunyikan setelah 3 detik
+    setTimeout(() => {
+      notification.classList.remove('show');
+    }, 3000);
+  }
+
+  // Fungsi untuk merender tabel
+  function renderTable(data) {
+    inventoryTableBody.innerHTML = '';
+    
+    if (data.length === 0) {
+      inventoryTableBody.innerHTML = `
+        <tr>
+          <td colspan="6" class="empty-state">
+            <i class="fas fa-box-open"></i>
+            <p>Tidak ada data inventory</p>
+          </td>
+        </tr>
+      `;
+      return;
+    }
+    
+    data.forEach(item => {
+      const isLowStock = item.jumlah < item.minStok;
+      const stockClass = isLowStock ? 'stock-low' : 'stock-ok';
+      
+      // Tentukan kategori badge
+      let categoryClass = '';
+      let categoryText = '';
+      
+      switch(item.kategori) {
+        case 'food':
+          categoryClass = 'category-food';
+          categoryText = 'Makanan';
+          break;
+        case 'drink':
+          categoryClass = 'category-drink';
+          categoryText = 'Minuman';
+          break;
+        case 'kitchen':
+          categoryClass = 'category-kitchen';
+          categoryText = 'Dapur';
+          break;
+      }
+      
+      const row = document.createElement('tr');
+      row.innerHTML = `
+        <td>${item.nama}</td>
+        <td><span class="category-badge ${categoryClass}">${categoryText}</span></td>
+        <td class="${stockClass}">${formatAngka(item.jumlah)}</td>
+        <td>${item.satuan}</td>
+        <td>${item.lokasi || '-'}</td>
+        <td>
+          <div class="actions">
+            <button class="btn btn-warning btn-small edit-btn" data-id="${item.id}">
+              <i class="fas fa-edit"></i> Edit
+            </button>
+            <button class="btn btn-danger btn-small delete-btn" data-id="${item.id}">
+              <i class="fas fa-trash"></i> Hapus
+            </button>
+          </div>
+        </td>
+      `;
+      
+      inventoryTableBody.appendChild(row);
+    });
+    
+    // Tambah event listener untuk tombol edit dan hapus
+    document.querySelectorAll('.edit-btn').forEach(btn => {
+      btn.addEventListener('click', handleEdit);
+    });
+    
+    document.querySelectorAll('.delete-btn').forEach(btn => {
+      btn.addEventListener('click', handleDelete);
+    });
+  }
+
+  // Fungsi untuk memuat data
+  async function loadData(filter = 'all') {
+    try {
+      inventoryTableBody.innerHTML = `
+        <tr>
+          <td colspan="6" class="loading">
+            <div class="loading-spinner"></div>
+            <p>Memuat data inventory...</p>
+          </td>
+        </tr>
+      `;
+      
+      if (filter === 'all') {
+        inventoryData = await ambilDaftarInventory();
+      } else {
+        inventoryData = await ambilInventoryByKategori(filter);
+      }
+      
+      renderTable(inventoryData);
+      updateStatistics();
+      
+    } catch (error) {
+      console.error('Error memuat data:', error);
+      showNotification('Gagal memuat data inventory', 'error');
+    }
+  }
+
+  // Fungsi untuk update statistik
+  async function updateStatistics() {
+    try {
+      const stats = await hitungStatistik();
+      
+      totalItemsEl.textContent = stats.totalItems;
+      lowStockEl.textContent = stats.lowStock;
+      categoriesCountEl.textContent = Object.keys(stats.categories).filter(k => stats.categories[k] > 0).length;
+      
+      summaryFoodEl.textContent = `${stats.categories.food} item`;
+      summaryDrinkEl.textContent = `${stats.categories.drink} item`;
+      summaryKitchenEl.textContent = `${stats.categories.kitchen} item`;
+      summaryLowEl.textContent = `${stats.lowStock} item`;
+      summaryTotalEl.textContent = `${stats.totalItems} item`;
+      
+    } catch (error) {
+      console.error('Error update statistik:', error);
+    }
+  }
+
+  // Fungsi untuk handle submit form
+  async function handleSubmit(e) {
+    e.preventDefault();
+    
+    if (!itemForm.checkValidity()) {
+      itemForm.reportValidity();
+      return;
+    }
+    
+    const data = {
+      nama: itemName.value.trim(),
+      kategori: itemCategory.value,
+      jumlah: parseInt(itemQuantity.value),
+      satuan: itemUnit.value.trim(),
+      minStok: parseInt(itemMinStock.value),
+      lokasi: itemLocation.value.trim()
+    };
+    
+    try {
+      if (isEditing && currentEditId) {
+        // Update data
+        await updateInventory(currentEditId, data);
+        showNotification('Item berhasil diupdate!', 'success');
+        
+        // Reset mode edit
+        cancelEditMode();
+      } else {
+        // Tambah data baru
+        await tambahInventory(data);
+        showNotification('Item berhasil ditambahkan!', 'success');
+      }
+      
+      // Reset form
+      itemForm.reset();
+      
+      // Reload data
+      const activeFilter = document.querySelector('.filter-btn.active').dataset.filter;
+      loadData(activeFilter);
+      
+    } catch (error) {
+      console.error('Error menyimpan data:', error);
+      showNotification('Gagal menyimpan data', 'error');
+    }
+  }
+
+  // Fungsi untuk handle edit
+  async function handleEdit(e) {
+    const id = e.currentTarget.dataset.id;
+    
+    try {
+      const item = await ambilInventoryById(id);
+      
+      // Isi form dengan data yang akan diedit
+      itemName.value = item.nama;
+      itemCategory.value = item.kategori;
+      itemQuantity.value = item.jumlah;
+      itemUnit.value = item.satuan;
+      itemMinStock.value = item.minStok;
+      itemLocation.value = item.lokasi || '';
+      itemId.value = item.id;
+      
+      // Set mode edit
+      isEditing = true;
+      currentEditId = id;
+      cancelEditBtn.style.display = 'inline-flex';
+      
+      // Scroll ke form
+      itemForm.scrollIntoView({ behavior: 'smooth' });
+      
+      showNotification('Mode edit diaktifkan', 'warning');
+      
+    } catch (error) {
+      console.error('Error mengambil data untuk edit:', error);
+      showNotification('Gagal memuat data untuk edit', 'error');
+    }
+  }
+
+  // Fungsi untuk handle delete
+  async function handleDelete(e) {
+    const id = e.currentTarget.dataset.id;
+    const itemName = e.currentTarget.closest('tr').querySelector('td:first-child').textContent;
+    
+    if (confirm(`Apakah Anda yakin ingin menghapus "${itemName}"?`)) {
+      try {
+        await hapusInventory(id);
+        showNotification('Item berhasil dihapus!', 'success');
+        
+        // Reload data
+        const activeFilter = document.querySelector('.filter-btn.active').dataset.filter;
+        loadData(activeFilter);
+        
+      } catch (error) {
+        console.error('Error menghapus data:', error);
+        showNotification('Gagal menghapus data', 'error');
+      }
+    }
+  }
+
+  // Fungsi untuk cancel edit mode
+  function cancelEditMode() {
+    isEditing = false;
+    currentEditId = null;
+    itemForm.reset();
+    itemId.value = '';
+    cancelEditBtn.style.display = 'none';
+  }
+
+  // Event Listeners
+  itemForm.addEventListener('submit', handleSubmit);
+  
+  cancelEditBtn.addEventListener('click', () => {
+    cancelEditMode();
+    showNotification('Mode edit dibatalkan', 'warning');
+  });
+  
+  // Filter buttons
+  filterButtons.forEach(btn => {
+    btn.addEventListener('click', () => {
+      // Remove active class from all buttons
+      filterButtons.forEach(b => b.classList.remove('active'));
+      
+      // Add active class to clicked button
+      btn.classList.add('active');
+      
+      // Load data with filter
+      const filter = btn.dataset.filter;
+      loadData(filter);
+    });
+  });
+
+  // Inisialisasi
+  document.addEventListener('DOMContentLoaded', () => {
+    // Load data pertama kali
+    loadData();
+    
+    // Update statistics setiap 30 detik
+    setInterval(updateStatistics, 30000);
+  });
 </script>
-    
-    <script src="main.js"></script>
+ 
 </body>
 
 </html>
