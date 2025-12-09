@@ -16,12 +16,14 @@ import {
 
 // GANTI DENGAN FIREBASE CONFIG ANDA
 const firebaseConfig = {
-  apiKey: "AIzaSyD1SzPGurWmohpmdQiXu4fcGoGn9jZEM4s",
-  authDomain: "insancemerlang-86b51.firebaseapp.com",
-  projectId: "insancemerlang-86b51",
-  storageBucket: "insancemerlang-86b51.firebasestorage.app",
-  messagingSenderId: "639827268939",
-  appId: "1:639827268939:web:935df08f7dd741e80344ce"
+  apiKey: "AIzaSyCjXlgysJkN-2s3Gu0forgp7as5-9NqCkI",
+  authDomain: "pasar-b04a7.firebaseapp.com",
+  databaseURL: "https://pasar-b04a7-default-rtdb.firebaseio.com",
+  projectId: "pasar-b04a7",
+  storageBucket: "pasar-b04a7.appspot.com",
+  messagingSenderId: "508470916587",
+  appId: "1:508470916587:web:460e9a1612e92b712e15ae",
+  measurementId: "G-33T7CQCWBX"
 };
 
 const app = initializeApp(firebaseConfig);
